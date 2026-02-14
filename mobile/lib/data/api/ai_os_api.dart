@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/config.dart';
+import '../../core/user_identity.dart';
 import '../models/task_models.dart';
 
 class AiOsApi {
@@ -12,8 +13,13 @@ class AiOsApi {
 
   Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
 
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        'X-User-Id': UserIdentity.getUserId(),
+      };
+
   // =========================
-  // EXISTING NON-STREAM APIs
+  // TASK
   // =========================
 
   Future<TaskResponse> runTask(String text) async {
@@ -21,7 +27,7 @@ class AiOsApi {
 
     final res = await _client.post(
       _uri('/task'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers,
       body: jsonEncode(req.toJson()),
     );
 
@@ -32,6 +38,10 @@ class AiOsApi {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return TaskResponse.fromJson(body);
   }
+
+  // =========================
+  // MEMORY
+  // =========================
 
   Future<MemoryQueryResponse> recentMemory({
     String? memoryType,
@@ -45,7 +55,12 @@ class AiOsApi {
 
     final uri = _uri('/memory/recent').replace(queryParameters: qp);
 
-    final res = await _client.get(uri);
+    final res = await _client.get(
+      uri,
+      headers: {
+        'X-User-Id': UserIdentity.getUserId(),
+      },
+    );
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('recentMemory failed: ${res.statusCode} ${res.body}');
@@ -68,7 +83,7 @@ class AiOsApi {
 
     final res = await _client.post(
       _uri('/memory/query'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers,
       body: jsonEncode(payload),
     );
 
@@ -79,6 +94,10 @@ class AiOsApi {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return MemoryQueryResponse.fromJson(body);
   }
+
+  // =========================
+  // LLM (Non-stream)
+  // =========================
 
   Future<LlmChatResponse> llmChat({
     required String message,
@@ -93,10 +112,7 @@ class AiOsApi {
 
     final res = await _client.post(
       _uri('/llm/chat'),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': 'web-user',
-      },
+      headers: _headers,
       body: jsonEncode(payload),
     );
 
@@ -122,10 +138,7 @@ class AiOsApi {
       _uri('/llm/stream'),
     );
 
-    request.headers.addAll({
-      'Content-Type': 'application/json',
-      'X-User-Id': 'web-user',
-    });
+    request.headers.addAll(_headers);
 
     request.body = jsonEncode({
       'message': message,
@@ -169,10 +182,7 @@ class AiOsApi {
       _uri('/agent/v2/stream'),
     );
 
-    request.headers.addAll({
-      'Content-Type': 'application/json',
-      'X-User-Id': 'web-user',
-    });
+    request.headers.addAll(_headers);
 
     request.body = jsonEncode({
       'prompt': prompt,
@@ -184,7 +194,7 @@ class AiOsApi {
     final response = await _client.send(request);
 
     if (response.statusCode != 200) {
-      throw Exception('Agent streaming failed');
+      throw Exception('Agent streaming failed: ${response.statusCode}');
     }
 
     final stream = response.stream
